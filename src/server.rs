@@ -1,7 +1,7 @@
 use std::{io, mem};
 use std::net::Ipv4Addr;
 use libc::{self, close, sa_family_t, sockaddr, sockaddr_in, socket,
-           AF_INET, IPPROTO_ICMP, SOCK_RAW, c_void, recvfrom};
+           AF_INET, IPPROTO_ICMP, SOCK_RAW, c_void, recvfrom, sendto};
 
 use crate::icmp_packet::IcmpPacket;
 
@@ -28,7 +28,7 @@ impl Server {
       libc::bind(
         socket,
         &addr as *const _ as *const sockaddr,
-        mem::size_of::<sockaddr_in>() as u32,
+        size_of::<sockaddr_in>() as u32,
       )
     };
 
@@ -41,17 +41,17 @@ impl Server {
 
   pub fn listen(&self) -> io::Result<()> {
     println!("Listening for ICMP packets...");
-    let mut buffer = vec![0u8; 1024];
+    let mut buf = vec![0u8; 1024];
 
     loop {
       let mut src_addr: sockaddr_in = unsafe { mem::zeroed() };
-      let mut src_addr_len = mem::size_of::<sockaddr_in>() as u32;
+      let mut src_addr_len = size_of::<sockaddr_in>() as u32;
 
       let received = unsafe {
         recvfrom(
           self.socket,
-          buffer.as_mut_ptr() as *mut c_void,
-          buffer.len(),
+          buf.as_mut_ptr() as *mut c_void,
+          buf.len(),
           0,
           &mut src_addr as *mut _ as *mut sockaddr,
           &mut src_addr_len,
@@ -63,14 +63,48 @@ impl Server {
       }
 
       let src_ip = Ipv4Addr::from(u32::from_be(src_addr.sin_addr.s_addr));
-      let ip_header_length = (buffer[0] & 0x0F) * 4;
-      let icmp_data = &buffer[ip_header_length as usize..received as usize];
+      let ip_header_length = (buf[0] & 0x0F) * 4;
+      let icmp_data = &buf[ip_header_length as usize..received as usize];
 
       if let Some(packet) = IcmpPacket::from_bytes(icmp_data) {
         println!("Received from {}:", src_ip);
         packet.print();
+
+        if packet.is_echo_req() {
+          if let Err(e) = self.send_reply(&src_addr, &packet) {
+            eprintln!("Failed to send echo reply: {}", e);
+          } else {
+            println!("Sent echo reply to {}", src_ip);
+          }
+        }
       }
     }
+  }
+
+  pub fn send_reply(
+    &self,
+    dst_addr: &sockaddr_in,
+    src_echo_pkt: &IcmpPacket
+  ) -> io::Result<()> {
+    let mut reply_pkt = src_echo_pkt.make_echo_resp();
+
+    let bytes = reply_pkt.bytes();
+    let sent = unsafe {
+      sendto(
+        self.socket,
+        bytes.as_ptr() as *const c_void,
+        bytes.len(),
+        0,
+        dst_addr as *const _ as *const sockaddr,
+        size_of::<sockaddr_in>() as u32,
+      )
+    };
+
+    if sent < 0 {
+      return Err(io::Error::last_os_error());
+    }
+
+    Ok(())
   }
 }
 

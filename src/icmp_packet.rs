@@ -20,33 +20,19 @@ impl IcmpPacket {
     }
   }
 
-  pub fn calculate_checksum(&self) -> u16 {
-    let mut sum = 0u32;
-
-    // add headers
-    sum += ((self.type_ as u16) << 8 | self.code as u16) as u32;
-    sum += self.checksum as u32;
-    sum += self.identifier as u32;
-    sum += self.sequence as u32;
-
-    // add payload/s
-    let mut i = 0;
-    while i < self.payload.len() {
-      let word = if i + 1 < self.payload.len() {
-        ((self.payload[i] as u16) << 8) | self.payload[i + 1] as u16
-      } else {
-        (self.payload[i] as u16) << 8
-      };
-      sum += word as u32;
-      i += 2;
+  pub fn make_echo_resp(&self) -> Self {
+    Self {
+      type_: 0,
+      code: 0,
+      checksum: 0,
+      identifier: self.identifier,
+      sequence: self.sequence,
+      payload: self.payload.clone(),
     }
+  }
 
-    while (sum >> 16) != 0 {
-      sum = (sum & 0xFFFF) + (sum >> 16);
-    }
-
-    // ones complement and trunc to u16 incase overflow
-    !sum as u16
+  pub fn is_echo_req(&self) -> bool {
+    self.type_ == 8 && self.code == 0
   }
 
   pub fn bytes(&mut self) -> Vec<u8> {
@@ -86,5 +72,35 @@ impl IcmpPacket {
     println!("  identifier: {}", self.identifier);
     println!("  sequence: {}", self.sequence);
     println!("  payload (bytes): {} bytes", self.payload.len());
+    println!("  payload (content): {:?} bytes", self.payload);
+  }
+
+  fn calculate_checksum(&self) -> u16 {
+    let mut sum = 0u32;
+
+    // add headers
+    sum += ((self.type_ as u16) << 8 | self.code as u16) as u32;
+    sum += self.checksum as u32;
+    sum += self.identifier as u32;
+    sum += self.sequence as u32;
+
+    // add payload/s
+    let mut i = 0;
+    while i < self.payload.len() {
+      let word = if i + 1 < self.payload.len() {
+        ((self.payload[i] as u16) << 8) | self.payload[i + 1] as u16
+      } else {
+        (self.payload[i] as u16) << 8
+      };
+      sum += word as u32;
+      i += 2;
+    }
+
+    while (sum >> 16) != 0 {
+      sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+
+    // ones complement and trunc to u16 in case overflow
+    !sum as u16
   }
 }

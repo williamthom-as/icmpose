@@ -2,7 +2,8 @@ use std::ffi::c_void;
 use std::io;
 use std::net::Ipv4Addr;
 use std::time::Duration;
-use libc::{close, recvfrom, sa_family_t, sendto, sockaddr, sockaddr_in, socket, AF_INET, IPPROTO_ICMP, SOCK_RAW};
+use libc::{close, recvfrom, sa_family_t, sendto, sockaddr, sockaddr_in,
+           socket, AF_INET, IPPROTO_ICMP, SOCK_RAW};
 use std::mem::size_of;
 
 use crate::icmp_packet::IcmpPacket;
@@ -27,12 +28,18 @@ impl Client {
     })
   }
 
-  pub fn ping(&mut self, dest_ip: &str, timeout: Duration) -> io::Result<IcmpPacket> {
+  pub fn ping(
+    &mut self,
+    dest_ip: &str,
+    timeout: Duration
+  ) -> io::Result<IcmpPacket> {
     let addr = dest_ip.parse::<Ipv4Addr>()
       .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
 
     let mut packet = IcmpPacket::new_echo_req(self.identifier, self.sequence);
     self.sequence = self.sequence.wrapping_add(1);
+
+    packet.print();
 
     let dest_addr = sockaddr_in {
       sin_family: AF_INET as sa_family_t,
